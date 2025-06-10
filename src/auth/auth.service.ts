@@ -1,12 +1,18 @@
 import {ForbiddenException, Injectable } from "@nestjs/common";
 import { AuthDto } from "./dto";
-import { PrismaService } from "src/prisma/prisma.service";
+import { PrismaService } from  "../prisma/prisma.service"                  
 import * as argon from 'argon2';
-import { PrismaClientKnownRequestError, PrismaClientUnknownRequestError } from "generated/prisma/runtime/library";
+import { PrismaClientKnownRequestError } from  "../../generated/prisma/runtime/library"
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class AuthService{
-    constructor(private prisma:PrismaService){}
+    constructor(
+        private prisma:PrismaService,
+        private jwt:JwtService,
+        private config:ConfigService
+    ){}
     async signup(dto:AuthDto) {
         //generate the password hash
         const hash = await argon.hash(dto.password);
@@ -20,8 +26,12 @@ export class AuthService{
             }
         });
             // Clone the user object and remove the hash
-            const { hash: _, ...userWithoutHash } = user;
-            return userWithoutHash;
+            // const { hash: _, ...userWithoutHash } = user;
+            // return userWithoutHash;
+            const token = this.signToken(user.id,user.email)
+            return{
+                access_token:token
+            }
         } catch (error) {
             if(error instanceof PrismaClientKnownRequestError){
                 if (error.code === 'P2002') {
@@ -60,7 +70,25 @@ export class AuthService{
                 'Credentials incorrect'
             )
           }
-            const { hash: _, ...userWithoutHash } = user;
-            return userWithoutHash;
+          const token = await this.signToken(user.id,user.email)
+           //const { hash: _, ...userWithoutHash } = user;
+         
+          return{
+            access_token:token,
+            //user:userWithoutHash
+          };
+
+    }
+
+    signToken (userId:number,email:string){
+        const payload = { 
+            sub:userId,
+            email
+        }
+        const secret = this.config.get('JWT_SECRET')
+        return this.jwt.signAsync(payload,{
+            expiresIn:'15m',
+            secret:secret
+        })
     }
 } 
